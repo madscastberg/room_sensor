@@ -1,1 +1,457 @@
+i2c:
+  sda: GPIO2
+  scl: GPIO1
+  scan: true
+  frequency: 100kHz
+
+uart:
+  id: uart_bus
+  tx_pin: GPIO16 #Change to your TX pin
+  rx_pin: GPIO17 #Change to your RX pin
+  baud_rate: 9600
+
+pca9554:
+  - id: 'pca9536'
+    address: 0x41
+    pin_count: 4
+
+sensor:
+  - platform: sts3x
+    name: "STS Temperature"
+    id: sts_temperature
+    update_interval: 60s
+
+  - platform: bme280_i2c
+    id: BME_280
+    temperature:
+      name: "BME280 Temperature"
+      id: bme_temperature
+      oversampling: 2x
+      accuracy_decimals: 1
+      filters:
+        - lambda: "return x + id(temperature_offset_ui).state;"
+    pressure:
+      name: "BME280 Pressure"
+      id: bme_pressure
+    humidity:
+      name: "BME280 Humidity"
+      id: bme_humidity
+    address: 0x76
+  
+  - platform: template
+    name: "Dew Point"
+    lambda: |-
+      return (243.5*(log(id(bme_humidity).state/100)+((17.67*id(bme_temperature).state)/
+      (243.5+id(bme_temperature).state)))/(17.67-log(id(bme_humidity).state/100)-
+      ((17.67*id(bme_temperature).state)/(243.5+id(bme_temperature).state))));
+    unit_of_measurement: °C
+    icon: 'mdi:thermometer-alert'
+
+  - platform: bh1750
+    name: "BH1750 Illuminance"
+    address: 0x23
+    update_interval: 5s
+
+  - platform: sgp4x
+    voc:
+      name: "VOC Index"
+    nox:
+      name: "NOx Index"
+    compensation:
+      humidity_source: bme_humidity
+      temperature_source: bme_temperature
+
+  - platform: scd4x
+    measurement_mode: low_power_periodic
+    update_interval: 30s
+    ambient_pressure_compensation_source: bme_pressure
+    temperature_offset: 0
+    co2:
+      name: "CO2 level"
+
+  - platform: adc
+    pin: GPIO3
+    name: "Smoke"
+    update_interval: 5s
+    attenuation: auto
+    unit_of_measurement: PPM
+    filters:
+      - calibrate_linear:
+         method: least_squares
+         datapoints:
+          # Map 0.0 (from sensor) to 1.0 (true value)
+          - 0.1 -> 100.0
+          - 3.1 -> 1000.0
+
+  - platform: pulse_meter
+    pin: GPIO19
+    name: "Fan speed"
+    id: blower_speed
+    unit_of_measurement: "RPM"
+
+binary_sensor:
+  - platform: gpio
+    name: Occupancy
+    id: mmwave
+    device_class: occupancy
+    pin:
+      pca9554: pca9536
+      number: 0
+      inverted: false
+
+  - platform: gpio
+    pin:
+      pca9554: pca9536
+      number: 1
+      inverted: false
+    name: PIR
+    id: pir_motion_sensor
+    device_class: motion
+    filters:
+      - delayed_on: !lambda 'return id(pir_on_latency).state * 1000.0;'
+      - delayed_off:  !lambda 'return id(pir_off_latency).state * 1000.0;'
+
+light:
+  - platform: binary
+    name: mmWave LED
+    id: mmwave_led
+    restore_mode: RESTORE_DEFAULT_OFF
+    output: mmwave_led_output
+    entity_category: config
+    disabled_by_default: False
+
+fan:
+  - platform: speed
+    output: fan_pwm
+    name: Fan
+    id: int_blower
+    disabled_by_default: True
+    speed_count: 5
+    restore_mode: RESTORE_DEFAULT_ON
+    on_turn_on:
+      then:
+        - fan.turn_on:
+            id: int_blower
+            speed: 4 # Set to 80% speed on startup
+
+switch:
+  - platform: gpio
+    name: Buzzer
+    pin:
+      pca9554: pca9536
+      number: 2    
+
+  - platform: template
+    name: mmWave sensor
+    id: mmwave_sensor
+    disabled_by_default: True
+    entity_category: config
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+    turn_on_action:
+      - uart.write: "sensorStart"
+      - delay: 1s
+    turn_off_action:
+      - uart.write: "sensorStop"
+      - delay: 1s
+
+  - platform: template
+    name: UART presence output
+    id: uart_presence_output
+    entity_category: config
+    disabled_by_default: true
+    optimistic: true
+    turn_on_action:
+      - switch.turn_off: mmwave_sensor
+      - delay: 1s
+      - uart.write: "setUartOutput 1 1"
+      - delay: 1s
+      - uart.write: "saveConfig"
+      - delay: 3s
+      - switch.turn_on: mmwave_sensor
+    turn_off_action:
+      - switch.turn_off: mmwave_sensor
+      - delay: 1s
+      - uart.write: "setUartOutput 1 0"
+      - delay: 1s
+      - uart.write: "saveConfig"
+      - delay: 3s
+      - switch.turn_on: mmwave_sensor
+
+  - platform: template
+    name: UART target output
+    id: uart_target_output
+    entity_category: config
+    disabled_by_default: true
+    optimistic: true
+    assumed_state: false
+    turn_on_action:
+      - switch.turn_off: mmwave_sensor
+      - delay: 1s
+      - uart.write: "setUartOutput 2 1 1 1"
+      - delay: 1s
+      - uart.write: "saveConfig"
+      - delay: 3s
+      - switch.turn_on: mmwave_sensor
+    turn_off_action:
+      - switch.turn_off: mmwave_sensor
+      - delay: 1s
+      - uart.write: "setUartOutput 2 0"
+      - delay: 1s
+      - uart.write: "saveConfig"
+      - delay: 3s
+      - switch.turn_on: mmwave_sensor
+
+number:
+  - platform: template
+    name: "Temperature Offset"
+    id: temperature_offset_ui
+    unit_of_measurement: "°C"
+    min_value: -20
+    max_value: 20
+    step: 0.1
+    mode: box
+    update_interval: never
+    optimistic: true
+    restore_value: true
+    initial_value: 0
+    icon: "mdi:thermometer"
+    entity_category: config
+    on_value:
+      - lambda: 'id(BME_280).update();'
+
+  - platform: template
+    name: PIR off latency
+    icon: mdi:clock-end
+    entity_category: config
+    id: pir_off_latency
+    min_value: 1
+    max_value: 120
+    initial_value: 10
+    optimistic: true
+    step: 1
+    restore_value: true
+    unit_of_measurement: seconds
+    mode: slider
+
+  - platform: template
+    name: PIR on latency
+    icon: mdi:clock-start
+    entity_category: config
+    id: pir_on_latency
+    min_value: 0
+    max_value: 1
+    initial_value: 0
+    optimistic: true
+    step: 0.1
+    restore_value: true
+    unit_of_measurement: seconds
+    mode: slider
+    disabled_by_default: true
+
+  - platform: template
+    id: range_minimum
+    name: Range (Minimum)
+    icon: mdi:arrow-collapse-left
+    entity_category: config
+    min_value: 0
+    max_value: 25
+    initial_value: 0
+    optimistic: true
+    step: 0.1
+    restore_value: true
+    unit_of_measurement: m
+    mode: slider
+
+  - platform: template
+    id: range_maximum
+    name: Range (Maximum)
+    icon: mdi:arrow-collapse-right
+    entity_category: config
+    min_value: 0
+    max_value: 25
+    initial_value: 12
+    optimistic: true
+    step: 0.1
+    restore_value: true
+    unit_of_measurement: m
+    mode: slider
+    
+  - platform: template
+    id: range_reduced_mmwave
+    name: Range Reduced (mmWave)
+    icon: mdi:arrow-collapse-horizontal
+    entity_category: config
+    min_value: 0
+    max_value: 25
+    initial_value: 0.8
+    optimistic: true
+    step: 0.1
+    restore_value: true
+    unit_of_measurement: m
+    mode: slider
+    set_action:
+      - switch.turn_off: mmwave_sensor
+      - delay: 1s
+      - uart.write: !lambda
+          std::string ms = "setRangeReduced " + to_string(x);
+          return std::vector<unsigned char>(ms.begin(), ms.end());
+      - delay: 1s
+      - uart.write: "saveConfig"
+      - delay: 1s
+      - switch.turn_on: mmwave_sensor
+
+  - platform: template
+    name: Clearance Delay (Occupancy)
+    icon: mdi:clock-end
+    entity_category: config
+    id: mmwave_off_latency
+    min_value: 1
+    max_value: 600
+    initial_value: 15
+    optimistic: true
+    step: 5
+    restore_value: true
+    unit_of_measurement: seconds
+    mode: slider
+    set_action:
+      - switch.turn_off: mmwave_sensor
+      - delay: 1s
+      - uart.write: !lambda |-
+          std::string mss = "setLatency " + to_string(id(mmwave_on_latency).state) + " " + to_string(id(mmwave_off_latency).state);
+          return std::vector<unsigned char>(mss.begin(), mss.end());
+      - delay: 1s
+      - uart.write: "saveConfig"
+      - delay: 1s
+      - switch.turn_on: mmwave_sensor
+
+  - platform: template
+    name: Detection Delay (Movement)
+    icon: mdi:clock-start
+    id: mmwave_on_latency
+    entity_category: config
+    min_value: 0
+    max_value: 2
+    initial_value: 0
+    optimistic: true
+    step: 0.25
+    restore_value: true
+    unit_of_measurement: seconds
+    mode: slider
+    set_action:
+      - switch.turn_off: mmwave_sensor
+      - delay: 1s
+      - uart.write: !lambda |-
+          std::string mss = "setLatency " + to_string(id(mmwave_on_latency).state) + " " + to_string(id(mmwave_off_latency).state);
+          return std::vector<unsigned char>(mss.begin(), mss.end());
+      - delay: 1s
+      - uart.write: "saveConfig"
+      - delay: 1s
+      - switch.turn_on: mmwave_sensor
+
+  - platform: template
+    name: Sensitivity (Occupancy)
+    icon: mdi:target-variant
+    id: sensitivity_occupancy
+    entity_category: config
+    min_value: 0
+    max_value: 9
+    initial_value: 7
+    optimistic: true
+    step: 1
+    restore_value: true
+
+  - platform: template
+    name: Sensitivity (Movement)
+    icon: mdi:target-variant
+    id: sensitivity_movement
+    entity_category: config
+    min_value: 0
+    max_value: 9
+    initial_value: 5
+    optimistic: true
+    step: 1
+    restore_value: true
+
+button:
+  - platform: template
+    name: "Set Distance"
+    id: set_distance
+    entity_category: config
+    on_press:
+      - switch.turn_off: mmwave_sensor
+      - delay: 1s
+      - uart.write: !lambda
+          std::string ms = "setRange " + to_string(id(range_minimum).state) + " " + to_string(id(range_maximum).state);
+          return std::vector<unsigned char>(ms.begin(), ms.end());
+      - delay: 1s
+      - uart.write: "saveConfig"
+      - delay: 1s
+      - switch.turn_on: mmwave_sensor
+ 
+  - platform: template
+    name: "Set Sensitivity"
+    id: set_sensitivity
+    entity_category: config
+    on_press:
+      - switch.turn_off: mmwave_sensor
+      - delay: 1s
+      - uart.write:
+          !lambda std::string mss = "setSensitivity " + to_string(id(sensitivity_occupancy).state) + " " + to_string(id(sensitivity_movement).state);
+          return std::vector<unsigned char>(mss.begin(), mss.end());
+      - delay: 1s
+      - uart.write: "saveConfig"
+      - delay: 1s
+      - switch.turn_on: mmwave_sensor
+
+  - platform: template
+    name: Restart mmWave Sensor
+    id: restart_mmwave
+    entity_category: config
+    internal: true
+    on_press:
+      - uart.write: "resetSystem"
+
+  - platform: template
+    name: Factory Reset mmWave
+    icon: mdi:cog-counterclockwise
+    id: factory_reset_mmwave
+    disabled_by_default: true
+    entity_category: config
+    on_press:
+      - switch.turn_off: mmwave_sensor
+      - delay: 1s
+      - uart.write: "resetCfg"
+      - delay: 3s
+      - switch.turn_on: mmwave_sensor
+  
+  - platform: restart
+    id: restart_internal
+    entity_category: config
+    internal: true
+
+output:
+  - platform: ledc
+    pin: GPIO4
+    id: fan_pwm
+    frequency: "1220Hz"
+
+  - platform: template
+    id: mmwave_led_output
+    type: binary
+    write_action:
+      - switch.turn_off: mmwave_sensor
+      - delay: 1s
+      - if:
+          condition:
+            lambda: !lambda return state;
+          then:
+            - uart.write: "setLedMode 1 0"
+          else:
+           - uart.write: "setLedMode 1 1"
+      - delay: 1s
+      - uart.write: "saveConfig"
+      - delay: 3s
+      - switch.turn_on: mmwave_sensor
+
 
