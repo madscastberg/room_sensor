@@ -4,6 +4,10 @@ i2c:
   scan: true
   frequency: 100kHz
 
+i2c_device:
+  - id: i2c_eeprom
+    address: 0x50
+
 uart:
   id: uart_bus
   tx_pin: GPIO16 #Change to your TX pin
@@ -16,11 +20,26 @@ pca9554:
     pin_count: 4
 
 sensor:
-  - platform: sts3x
-    name: "STS Temperature"
-    id: sts_temperature
-    update_interval: 60s
+  - platform: template
+    name: "cal_t"
+    id: cal_t
+    lambda: |-
+      float c;
+      id(i2c_eeprom).read_bytes(0x10,reinterpret_cast<uint8_t *>(&c),1);
+      return c;
+    update_interval: never
 
+  - platform: shtcx
+    temperature:
+      name: "Temperature"
+      id: shtc_temp
+      filters:
+        - lambda: "return x + id(cal_t).state;"
+    humidity:
+      name: "Humidity"
+      id: shtc_hum
+    update_interval: 10s
+  
   - platform: bme280_i2c
     id: BME_280
     temperature:
