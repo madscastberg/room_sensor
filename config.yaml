@@ -2,6 +2,13 @@ esphome:
   on_boot: 
     then:
       - component.update: cal_t
+
+logger:
+
+api:
+
+ota:
+  platform: esphome
     
 i2c:
   sda: GPIO2
