@@ -5,11 +5,6 @@ esphome:
 
 logger:
 
-api:
-
-ota:
-  platform: esphome
-    
 i2c:
   sda: GPIO2
   scl: GPIO1
@@ -32,6 +27,27 @@ pca9554:
     pin_count: 4
 
 sensor:
+- platform: adc
+    id: co_ppm
+    name: "CO"
+    entity_category: diagnostic
+    disabled_by_default: True
+    pin: GPIO0
+    unit_of_measurement: PPM
+    attenuation: auto
+    update_interval: never
+    filters:
+      - calibrate_linear:
+         method: exact
+         datapoints:
+          - 1.0 -> 0.0
+          - 1.7 -> 50.0
+          - 2.1 -> 100.0
+          - 2.6 -> 200.0
+          - 2.8 -> 250.0
+          - 2.85 -> 300.0
+          - 3.0 -> 450.0
+    
   - platform: template
     name: "cal_t"
     id: cal_t
@@ -166,6 +182,14 @@ fan:
             speed: 4 # Set to 80% speed on startup
 
 switch:
+  - platform: output
+    name: "CO Heater"
+    icon: mdi:fire
+    entity_category: diagnostic
+    disabled_by_default: True
+    id: co_heat
+    output: co_heat_pin
+    
   - platform: gpio
     name: Buzzer
     pin:
@@ -460,10 +484,34 @@ button:
     id: restart_internal
     entity_category: config
     internal: true
+    
+interval:
+  - interval: 150s
+    then:
+      - switch.turn_on: co_heat
+      - logger.log: "MP-7: The sensor is heating!"
+      - delay: 55s
+      - switch.turn_off: co_heat
+      - logger.log: "MP-7: The sensor is measuring!"
+      - delay: 90s
+      - if:
+          condition:
+            - switch.is_off: co_heat
+          then:
+            - component.update: co_raw
+            - logger.log: "MP-7: Done"
+            - switch.turn_on: co_heat
+            - delay: 5s
 
 output:
+  - platform: gpio
+    id: co_heat_pin
+    pin: 
+      pca9554: pca9536
+      number: 3
+    
   - platform: ledc
-    pin: GPIO4
+    pin: GPIO18
     id: fan_pwm
     frequency: "1220Hz"
 
