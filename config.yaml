@@ -11,15 +11,15 @@ i2c:
   scan: true
   frequency: 100kHz
 
-i2c_device:
-  - id: i2c_eeprom
-    address: 0x50
-
 uart:
   id: uart_bus
   tx_pin: GPIO16 #Change to your TX pin
   rx_pin: GPIO17 #Change to your RX pin
   baud_rate: 9600
+
+i2c_device:
+  - id: i2c_eeprom
+    address: 0x50
 
 pca9554:
   - id: 'pca9536'
@@ -27,27 +27,6 @@ pca9554:
     pin_count: 4
 
 sensor:
-- platform: adc
-    id: co_ppm
-    name: "CO"
-    entity_category: diagnostic
-    disabled_by_default: True
-    pin: GPIO0
-    unit_of_measurement: PPM
-    attenuation: auto
-    update_interval: never
-    filters:
-      - calibrate_linear:
-         method: exact
-         datapoints:
-          - 1.0 -> 0.0
-          - 1.7 -> 50.0
-          - 2.1 -> 100.0
-          - 2.6 -> 200.0
-          - 2.8 -> 250.0
-          - 2.85 -> 300.0
-          - 3.0 -> 450.0
-    
   - platform: template
     name: "cal_t"
     id: cal_t
@@ -55,42 +34,35 @@ sensor:
       float c;
       id(i2c_eeprom).read_bytes(0x10,reinterpret_cast<uint8_t *>(&c),1);
       return c;
-    update_interval: 1d
+    update_interval: never
 
   - platform: shtcx
+    id: shtc3
     temperature:
       name: "Temperature"
       id: shtc_temp
       filters:
-        - lambda: "return x + id(cal_t).state;"
+       - lambda: "return x + id(cal_t).state + id(temperature_offset_ui).state;"
     humidity:
       name: "Humidity"
       id: shtc_hum
     update_interval: 10s
   
-  - platform: bme280_i2c
-    id: BME_280
+  - platform: mpl3115a2
     temperature:
-      name: "BME280 Temperature"
-      id: bme_temperature
-      oversampling: 2x
-      accuracy_decimals: 1
-      filters:
-        - lambda: "return x + id(temperature_offset_ui).state;"
+      name: "MPL3115A2 Temperature"
+      id: mpl_temp
     pressure:
-      name: "BME280 Pressure"
-      id: bme_pressure
-    humidity:
-      name: "BME280 Humidity"
-      id: bme_humidity
-    address: 0x76
+      name: "Pressure"
+      id: mpl_press
+    update_interval: 10s
   
   - platform: template
     name: "Dew Point"
     lambda: |-
-      return (243.5*(log(id(bme_humidity).state/100)+((17.67*id(bme_temperature).state)/
-      (243.5+id(bme_temperature).state)))/(17.67-log(id(bme_humidity).state/100)-
-      ((17.67*id(bme_temperature).state)/(243.5+id(bme_temperature).state))));
+      return (243.5*(log(id(shtc_hum).state/100)+((17.67*id(shtc_temp).state)/
+      (243.5+id(shtc_temp).state)))/(17.67-log(id(shtc_hum).state/100)-
+      ((17.67*id(shtc_temp).state)/(243.5+id(shtc_hum).state))));
     unit_of_measurement: °C
     icon: 'mdi:thermometer-alert'
 
@@ -105,13 +77,13 @@ sensor:
     nox:
       name: "NOx Index"
     compensation:
-      humidity_source: bme_humidity
-      temperature_source: bme_temperature
+      humidity_source: shtc_hum
+      temperature_source: shtc_temp
 
   - platform: scd4x
     measurement_mode: low_power_periodic
     update_interval: 30s
-    ambient_pressure_compensation_source: bme_pressure
+    ambient_pressure_compensation_source: mpl_press
     temperature_offset: 0
     co2:
       name: "CO2 level"
@@ -182,14 +154,6 @@ fan:
             speed: 4 # Set to 80% speed on startup
 
 switch:
-  - platform: output
-    name: "CO Heater"
-    icon: mdi:fire
-    entity_category: diagnostic
-    disabled_by_default: True
-    id: co_heat
-    output: co_heat_pin
-    
   - platform: gpio
     name: Buzzer
     pin:
@@ -273,7 +237,7 @@ number:
     icon: "mdi:thermometer"
     entity_category: config
     on_value:
-      - lambda: 'id(BME_280).update();'
+      - lambda: 'id(shtc3).update();'
 
   - platform: template
     name: PIR off latency
@@ -484,34 +448,10 @@ button:
     id: restart_internal
     entity_category: config
     internal: true
-    
-interval:
-  - interval: 150s
-    then:
-      - switch.turn_on: co_heat
-      - logger.log: "MP-7: The sensor is heating!"
-      - delay: 55s
-      - switch.turn_off: co_heat
-      - logger.log: "MP-7: The sensor is measuring!"
-      - delay: 90s
-      - if:
-          condition:
-            - switch.is_off: co_heat
-          then:
-            - component.update: co_raw
-            - logger.log: "MP-7: Done"
-            - switch.turn_on: co_heat
-            - delay: 5s
 
-output:
-  - platform: gpio
-    id: co_heat_pin
-    pin: 
-      pca9554: pca9536
-      number: 3
-    
+output:  
   - platform: ledc
-    pin: GPIO18
+    pin: GPIO4
     id: fan_pwm
     frequency: "1220Hz"
 
