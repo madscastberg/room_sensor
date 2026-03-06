@@ -5,12 +5,6 @@ esphome:
 
 logger:
 
-i2c:
-  sda: GPIO2
-  scl: GPIO1
-  scan: true
-  frequency: 10kHz
-
 uart:
   id: uart_bus
   tx_pin: GPIO16 #Change to your TX pin
