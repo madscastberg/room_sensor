@@ -9,7 +9,7 @@ i2c:
   sda: GPIO2
   scl: GPIO1
   scan: true
-  frequency: 100kHz
+  frequency: 50kHz
 
 uart:
   id: uart_bus
