@@ -27,7 +27,7 @@ sensor:
     lambda: |-
       float c;
       id(i2c_eeprom).read_bytes(0x10,reinterpret_cast<uint8_t *>(&c),1);
-      return c;
+      return c=0;
     update_interval: never
 
   - platform: shtcx
@@ -93,7 +93,7 @@ sensor:
          method: least_squares
          datapoints:
           # Map 0.0 (from sensor) to 1.0 (true value)
-          - 0.1 -> 100.0
+          - 0.1 -> 10.0
           - 3.1 -> 1000.0
 
   - platform: pulse_meter
