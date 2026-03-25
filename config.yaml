@@ -32,7 +32,6 @@ sensor:
 
   - platform: shtcx
     id: shtc3
-    heater_enabled: false
     temperature:
       name: "Temperature"
       id: shtc_temp
