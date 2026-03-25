@@ -107,7 +107,7 @@ sensor:
          method: least_squares
          datapoints:
           # Map 0.0 (from sensor) to 1.0 (true value)
-          - 0.1 -> 10.0
+          - 1.4 -> 1.0
           - 3.1 -> 1000.0
 
   - platform: pulse_meter
