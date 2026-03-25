@@ -35,6 +35,7 @@ sensor:
     temperature:
       name: "Temperature"
       id: shtc_temp
+      heater_enabled: false
       filters:
        - lambda: "return x + id(cal_t).state + id(temperature_offset_ui).state;"
     humidity:
