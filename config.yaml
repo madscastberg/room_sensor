@@ -110,11 +110,12 @@ sensor:
           - 1.42 -> 1.0
           - 3.1 -> 1000.0
 
-  - platform: pulse_meter
+  - platform: pulse_counter
     pin: GPIO19
     name: "Fan speed"
     id: blower_speed
     unit_of_measurement: "RPM"
+    
 
 binary_sensor:
   - platform: gpio
