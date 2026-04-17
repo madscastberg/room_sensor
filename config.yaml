@@ -459,7 +459,7 @@ button:
 
 output:  
   - platform: ledc
-    pin: GPIO4
+    pin: GPIO18
     id: fan_pwm
     frequency: "1220Hz"
 
