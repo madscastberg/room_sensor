@@ -465,7 +465,7 @@ output:
   - platform: ledc
     pin: GPIO18
     id: fan_pwm
-    frequency: "19531Hz"
+    frequency: "9765Hz"
 
   - platform: template
     id: mmwave_led_output
