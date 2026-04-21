@@ -2,6 +2,9 @@ esphome:
   on_boot: 
     then:
       - component.update: cal_t
+  project:
+    name: esphome.room-sensor
+    version: "1.1"
 
 logger:
 
@@ -462,7 +465,7 @@ output:
   - platform: ledc
     pin: GPIO18
     id: fan_pwm
-    frequency: "1220Hz"
+    frequency: "19531Hz"
 
   - platform: template
     id: mmwave_led_output
