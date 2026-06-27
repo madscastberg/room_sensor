@@ -4,7 +4,7 @@ esphome:
       - component.update: cal_t
   project:
     name: esphome.room-sensor
-    version: "1.1"
+    version: "1.2"
 
 logger:
 
@@ -157,13 +157,26 @@ fan:
     name: Fan
     id: int_blower
     disabled_by_default: True
-    speed_count: 5
+    speed_count: 10
     restore_mode: RESTORE_DEFAULT_ON
     on_turn_on:
       then:
         - fan.turn_on:
             id: int_blower
-            speed: 4 # Set to 80% speed on startup
+            speed: 6 # Set to 50% speed on startup
+    on_speed_set:
+      then:
+      - output.set_level:
+          id: fan_pwm
+          level: !lambda |-
+            int current_speed = id(int_blower).speed;
+            if (current_speed == 0) {
+              return 0.0; // Completely off
+            } else if (current_speed < 4) {
+              return 0.40; // Force to Speed 4 (40% duty cycle)
+            } else {
+              return (current_speed / 10.0); // Map speeds 4-10 seamlessly to 40%-100%
+            }
 
 switch:
   - platform: gpio
@@ -465,7 +478,7 @@ output:
   - platform: ledc
     pin: GPIO18
     id: fan_pwm
-    frequency: "9765Hz"
+    frequency: "200kHz"
 
   - platform: template
     id: mmwave_led_output
